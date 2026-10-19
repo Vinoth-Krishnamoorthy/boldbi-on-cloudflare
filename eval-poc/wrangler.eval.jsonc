@@ -1,0 +1,34 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "ticket287457",
+  "account_id": "ce1589d9d07e86f7f95eb9e12c05afac",
+  "main": "../deployment-worker.ts",
+  "compatibility_date": "2026-10-16",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "vars": { "DEPLOYMENT_MODE": "eval" },
+  "rules": [
+    { "type": "Text", "globs": ["**/Read-BoldBIDiagnostics.py"], "fallthrough": true }
+  ],
+  "containers": [
+    {
+      "class_name": "BoldBIEvalContainer",
+      "image": "./Dockerfile",
+      "image_build_context": ".",
+      "instance_type": "standard-4",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BOLDBI_CONTAINER", "class_name": "BoldBIContainer" },
+      { "name": "POSTGRES_CONTAINER", "class_name": "PostgresContainer" },
+      { "name": "BOLDBI_EVAL_CONTAINER", "class_name": "BoldBIEvalContainer" }
+    ]
+  },
+  "exports": {
+    "BoldBIContainer": { "type": "durable-object", "storage": "sqlite" },
+    "PostgresContainer": { "type": "durable-object", "storage": "sqlite" },
+    "BoldBIEvalContainer": { "type": "durable-object", "storage": "sqlite" }
+  }
+}

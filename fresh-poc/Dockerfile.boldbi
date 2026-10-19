@@ -1,0 +1,13 @@
+FROM golang:1.25-alpine AS proxy-build
+WORKDIR /src
+COPY proxy/ ./
+RUN go mod download && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /poc-proxy .
+
+# This tag excludes the bundled evaluation PostgreSQL server.
+FROM syncfusion/boldbi:17.1.30
+COPY --from=proxy-build /poc-proxy /usr/local/bin/poc-proxy
+WORKDIR /application
+# Preserve the vendor image's /application/entrypoint.sh startup command.
+ENTRYPOINT ["/usr/local/bin/poc-proxy", "client"]
+CMD ["/application/entrypoint.sh"]
+EXPOSE 80
