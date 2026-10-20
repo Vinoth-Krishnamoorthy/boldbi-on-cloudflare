@@ -1,15 +1,10 @@
 import { Container } from "@cloudflare/containers";
-import diagnosticSource from "./Read-BoldBIDiagnostics.py";
 
-const diagnosticPath = "/_poc/boldbi/diagnostics";
-const diagnosticVersion = "2026-10-19-v2";
-interface DiagnosticResult { status: number; body: string; }
 interface FreshEnv {
   BOLDBI_CONTAINER: DurableObjectNamespace<BoldBIContainer>;
   POSTGRES_CONTAINER: DurableObjectNamespace<PostgresContainer>;
   POC_TUNNEL_TOKEN: string;
   POSTGRES_PASSWORD: string;
-  POC_DIAGNOSTIC_TOKEN?: string;
   POC_BOLDBI_RESET_TOKEN?: string;
 }
 
@@ -59,63 +54,6 @@ export class BoldBIContainer extends Container<FreshEnv> {
   sleepAfter = "6h";
   enableInternet = true;
 
-  // This RPC method is reached only through the authenticated Worker route.
-  // The executable and source are fixed; caller input is never executed.
-  async readConnectionDiagnostics(workerOrigin: string): Promise<DiagnosticResult> {
-    const workerHost = new URL(workerOrigin).hostname;
-    const container = this.ctx.container;
-    if (!container?.running) return { status: 503, body: JSON.stringify({ error: "Open BoldBI first; the diagnostic does not start a stopped container." }) };
-    // Warm PostgreSQL and report its readiness separately from BoldBI's proxy.
-    // This check uses the Worker's current token; it does not change secrets.
-    let workerPostgresHealth: { httpStatus: number | null; ready: boolean; error?: string };
-    try {
-      const response = await fetchPostgresAfterStartup(this.env.POSTGRES_CONTAINER.getByName("postgres-fresh"), new Request(
-        new URL("/_poc/postgres/health", workerOrigin).href,
-        { headers: { Authorization: `Bearer ${this.env.POC_TUNNEL_TOKEN}` } },
-      ));
-      workerPostgresHealth = { httpStatus: response.status, ready: response.status === 200 };
-      await response.body?.cancel();
-    } catch {
-      workerPostgresHealth = { httpStatus: null, ready: false, error: "Worker could not reach the PostgreSQL proxy." };
-    }
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(this.env.POC_TUNNEL_TOKEN));
-    const expectedTokenHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-    const controller = new AbortController();
-    let completed = false;
-    const timeout = setTimeout(() => { if (!completed) controller.abort(); }, 45000);
-    const safeError = (message: string) => {
-      for (const secret of [this.env.POC_TUNNEL_TOKEN, this.env.POSTGRES_PASSWORD, this.env.POC_DIAGNOSTIC_TOKEN]) {
-        if (secret) message = message.replaceAll(secret, "[redacted]");
-      }
-      return message.slice(0, 2000);
-    };
-    try {
-      const process = await container.exec(["python3", "-c", diagnosticSource], {
-        signal: controller.signal, env: { POC_EXPECTED_TOKEN_SHA256: expectedTokenHash, POC_EXPECTED_HOST: workerHost },
-      });
-      const markCompleted = () => { completed = true; clearTimeout(timeout); };
-      void process.exitCode.then(markCompleted, markCompleted);
-      const output = await process.output();
-      if (output.exitCode !== 0) return { status: 502, body: JSON.stringify({
-        error: "The fixed diagnostic command failed.", exitCode: output.exitCode,
-        detail: safeError(new TextDecoder().decode(output.stderr)),
-      }) };
-      // Parse first to reject malformed diagnostic output. Preserve complete JSON.
-      let raw = new TextDecoder().decode(output.stdout);
-      for (const secret of [this.env.POC_TUNNEL_TOKEN, this.env.POSTGRES_PASSWORD, this.env.POC_DIAGNOSTIC_TOKEN]) {
-        if (secret) raw = raw.replaceAll(secret, "[redacted]");
-      }
-      const body = { ...JSON.parse(raw), diagnosticVersion, workerPostgresHealth };
-      return { status: 200, body: JSON.stringify(body) };
-    } catch (error) {
-      return { status: 502, body: JSON.stringify({
-        error: "Container diagnostic execution failed.",
-        kind: error instanceof Error ? error.name : "UnknownError",
-        detail: safeError(error instanceof Error ? error.message : String(error)),
-      }) };
-    } finally { completed = true; clearTimeout(timeout); }
-  }
-
   override async fetch(request: Request): Promise<Response> {
     // The caller's valid Worker hostname supplies the public TLS tunnel URL.
     const tunnel = new URL("/_poc/postgres/tunnel", request.url);
@@ -162,15 +100,6 @@ export default {
       return Response.json({ ok: true, application: "boldbi-fresh", restartOnNextRequest: true, postgresReset: false }, {
         headers: { "Cache-Control": "no-store" },
       });
-    }
-    if (path === diagnosticPath) {
-      const expected = env.POC_DIAGNOSTIC_TOKEN || env.POC_TUNNEL_TOKEN;
-      if (!expected || expected.length < 32 || request.headers.get("Authorization") !== `Bearer ${expected}`) {
-        return new Response("Unauthorized", { status: 401 });
-      }
-      if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET" } });
-      const result = await env.BOLDBI_CONTAINER.getByName("boldbi-fresh").readConnectionDiagnostics(new URL(request.url).origin);
-      return new Response(result.body, { status: result.status, headers: { "Cache-Control": "no-store", "Content-Type": "application/json" } });
     }
     if (!env.POC_TUNNEL_TOKEN || env.POC_TUNNEL_TOKEN.length < 32 || !env.POSTGRES_PASSWORD) {
       return new Response("Configure POC_TUNNEL_TOKEN and POSTGRES_PASSWORD first.", { status: 503 });

@@ -40,8 +40,7 @@ npx wrangler secret put POSTGRES_PASSWORD
 npx wrangler secret put POC_TUNNEL_TOKEN      # at least 32 random characters
 ```
 
-Optional: `POC_DIAGNOSTIC_TOKEN` (own credential for the diagnostics route) and
-`POC_BOLDBI_RESET_TOKEN` (at least 32 characters, enables the reset route).
+Optional: `POC_BOLDBI_RESET_TOKEN` (at least 32 characters, enables the reset route).
 
 ## 3. Deploy
 
@@ -79,12 +78,11 @@ Expect `ok` and `postgresTcpReachable` to be `True`. Then open
 
 Complete administrator, license and site setup, then open a dashboard to verify.
 
-## 6. Updates, diagnostics and tests
+## 6. Updates and tests
 
 - Code-only update: `npm run deploy:worker` (keeps the current images).
 - Image change: `npm run deploy`.
-- `GET <url>/_poc/boldbi/diagnostics` with `Authorization: Bearer <POC_DIAGNOSTIC_TOKEN or POC_TUNNEL_TOKEN>` returns a read-only connection report.
-- Checks: `npm run check`, `npm test`, `python -m unittest test_boldbi_diagnostics`, and `go test ./...` inside `proxy/`.
+- Checks: `npm run check`, `npm test`, `go test ./...` inside `proxy/`.
 
 Container storage is temporary: stopping or replacing an instance discards
 application and database files.

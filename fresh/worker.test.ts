@@ -10,20 +10,18 @@ import worker, { BoldBIContainer } from "./worker";
 function setup() {
   const postgresFetch = vi.fn(async () => new Response("postgres-proxy"));
   const boldbiFetch = vi.fn(async () => new Response("boldbi"));
-  const readConnectionDiagnostics = vi.fn(async () => ({ status: 200, body: JSON.stringify({ boldbiProxyReachedPostgres: true }) }));
   const destroyBoldBI = vi.fn(async () => {});
   const env = {
-    POC_DIAGNOSTIC_TOKEN: undefined as string | undefined,
     POC_BOLDBI_RESET_TOKEN: undefined as string | undefined,
     POC_TUNNEL_TOKEN: "test-token-with-more-than-thirty-two-characters",
     POSTGRES_PASSWORD: "test-only-password",
     POSTGRES_CONTAINER: { getByName: vi.fn(() => ({ fetch: postgresFetch })) },
-    BOLDBI_CONTAINER: { getByName: vi.fn(() => ({ fetch: boldbiFetch, readConnectionDiagnostics, destroy: destroyBoldBI })) },
+    BOLDBI_CONTAINER: { getByName: vi.fn(() => ({ fetch: boldbiFetch, destroy: destroyBoldBI })) },
   };
   // These tests exercise routing/authentication without starting container VMs.
   const fetch = (path: string, init?: RequestInit) =>
     worker.fetch(new Request("https://poc.example" + path, init), env as never);
-  return { env, fetch, postgresFetch, boldbiFetch, readConnectionDiagnostics, destroyBoldBI };
+  return { env, fetch, postgresFetch, boldbiFetch, destroyBoldBI };
 }
 
 describe("fresh POC routing security", () => {
@@ -38,33 +36,6 @@ describe("fresh POC routing security", () => {
     const { env, fetch } = setup();
     expect((await fetch("/_poc/postgres/tunnel")).status).toBe(401);
     expect((await fetch("/_poc/postgres/health", { headers: { Authorization: "Bearer wrong" } })).status).toBe(401);
-    expect(env.POSTGRES_CONTAINER.getByName).not.toHaveBeenCalled();
-    expect((await fetch("/_poc/boldbi/diagnostics")).status).toBe(401);
-    expect(env.BOLDBI_CONTAINER.getByName).not.toHaveBeenCalled();
-  });
-
-  it("routes fixed diagnostics to BoldBI only after authorization", async () => {
-    const { env, fetch, readConnectionDiagnostics, boldbiFetch } = setup();
-    const headers = { Authorization: "Bearer " + env.POC_TUNNEL_TOKEN };
-    expect((await fetch("/_poc/boldbi/diagnostics", { headers, method: "POST" })).status).toBe(405);
-    const response = await fetch("/_poc/boldbi/diagnostics?command=touch-unwanted-file", { headers });
-    expect(await response.json()).toEqual({ boldbiProxyReachedPostgres: true });
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(readConnectionDiagnostics.mock.calls).toEqual([["https://poc.example"]]);
-    expect(boldbiFetch).not.toHaveBeenCalled();
-    expect(env.BOLDBI_CONTAINER.getByName).toHaveBeenCalledWith("boldbi-fresh");
-    expect(env.POSTGRES_CONTAINER.getByName).not.toHaveBeenCalled();
-  });
-
-  it("isolates the temporary diagnostic credential from database access", async () => {
-    const { env, fetch, readConnectionDiagnostics } = setup();
-    env.POC_DIAGNOSTIC_TOKEN = "independent-diagnostic-credential-at-least-32-characters";
-    const admin = { Authorization: "Bearer " + env.POC_DIAGNOSTIC_TOKEN };
-    const tunnel = { Authorization: "Bearer " + env.POC_TUNNEL_TOKEN };
-    expect((await fetch("/_poc/boldbi/diagnostics", { headers: tunnel })).status).toBe(401);
-    expect((await fetch("/_poc/postgres/tunnel", { headers: admin })).status).toBe(401);
-    expect((await fetch("/_poc/boldbi/diagnostics", { headers: admin })).status).toBe(200);
-    expect(readConnectionDiagnostics).toHaveBeenCalledOnce();
     expect(env.POSTGRES_CONTAINER.getByName).not.toHaveBeenCalled();
   });
 
@@ -248,61 +219,3 @@ describe("PostgreSQL startup readiness", () => {
   });
 });
 
-describe("fixed in-container diagnostic", () => {
-  function container(running = true) {
-    const { env } = setup();
-    const exec = vi.fn(async () => ({
-      exitCode: Promise.resolve(0),
-      output: async () => ({ exitCode: 0, stdout: new TextEncoder().encode('{"boldbiProxyReachedPostgres":true}') }),
-    }));
-    const instance = new BoldBIContainer({ container: { running, exec } } as never, env as never);
-    const headers = { Authorization: "Bearer " + env.POC_TUNNEL_TOKEN };
-    return { instance, exec, headers, env };
-  }
-
-  it("does not start a stopped container", async () => {
-    const { instance, exec } = container(false);
-    expect((await instance.readConnectionDiagnostics("https://poc.example")).status).toBe(503);
-    expect(exec).not.toHaveBeenCalled();
-  });
-
-  it("executes only the bundled diagnostic source", async () => {
-    const { instance, exec } = container();
-    const result = await instance.readConnectionDiagnostics("https://poc.example");
-    expect(JSON.parse(result.body)).toEqual({
-      boldbiProxyReachedPostgres: true, diagnosticVersion: "2026-10-19-v2",
-      workerPostgresHealth: { httpStatus: 200, ready: true },
-    });
-    const args = exec.mock.calls[0][0];
-    expect(args.slice(0, 2)).toEqual(["python3", "-c"]);
-    expect(args[2]).toContain("socket.create_connection");
-    expect(args[2]).not.toContain("touch-unwanted-file");
-    const options = exec.mock.calls[0][1];
-    expect(Object.keys(options.env)).toEqual(["POC_EXPECTED_TOKEN_SHA256", "POC_EXPECTED_HOST"]);
-    expect(options.env.POC_EXPECTED_TOKEN_SHA256).toMatch(/^[a-f0-9]{64}$/);
-  });
-
-  it("separates database-proxy authentication failure from the local proxy check", async () => {
-    const { instance, env } = container();
-    env.POSTGRES_CONTAINER.getByName().fetch.mockResolvedValueOnce(new Response("Unauthorized", { status: 401 }));
-    const result = JSON.parse((await instance.readConnectionDiagnostics("https://poc.example")).body);
-    expect(result.workerPostgresHealth).toEqual({ httpStatus: 401, ready: false });
-    expect(result.boldbiProxyReachedPostgres).toBe(true);
-  });
-
-  it("reports execution failures while redacting both Worker secrets", async () => {
-    const { instance, exec, env } = container();
-    env.POC_DIAGNOSTIC_TOKEN = "temporary-secret";
-    exec.mockRejectedValueOnce(new Error(`runtime failure ${env.POC_TUNNEL_TOKEN} ${env.POSTGRES_PASSWORD} ${env.POC_DIAGNOSTIC_TOKEN}`));
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const response = await instance.readConnectionDiagnostics("https://poc.example");
-      expect(response.status).toBe(502);
-      const result = JSON.parse(response.body) as { detail: string };
-      expect(result.detail).toContain("runtime failure");
-      expect(result.detail).not.toContain(env.POC_TUNNEL_TOKEN);
-      expect(result.detail).not.toContain(env.POSTGRES_PASSWORD);
-      expect(result.detail).not.toContain(env.POC_DIAGNOSTIC_TOKEN);
-    } finally { log.mockRestore(); }
-  });
-});
