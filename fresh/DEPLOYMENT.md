@@ -40,7 +40,7 @@ npx wrangler secret put POSTGRES_PASSWORD
 npx wrangler secret put TUNNEL_TOKEN      # at least 32 random characters
 ```
 
-Optional: `BOLDBI_RESET_TOKEN` (at least 32 characters, enables the reset route).
+These two secrets are all that is required for standard deployment and operation.
 
 ## 3. Deploy
 
@@ -87,10 +87,13 @@ Complete administrator, license and site setup, then open a dashboard to verify.
 Container storage is temporary: stopping or replacing an instance discards
 application and database files.
 
-## 7. Reset or uninstall
+## 7. Recreate or reset containers
 
-List the applications and note the IDs of `boldbi-fresh-boldbicontainer` and
-`boldbi-fresh-postgrescontainer` (names follow your Worker name):
+If you want to recreate a container from scratch without any existing data, you have two options:
+
+### Option A: Manual reset via Wrangler CLI (Recommended)
+
+Delete the container applications using Wrangler. This completely wipes container storage:
 
 ```powershell
 npx wrangler containers list
@@ -98,8 +101,27 @@ npx wrangler containers delete <boldbi-id>
 npx wrangler containers delete <postgres-id>
 ```
 
-Redeploy with `npm run deploy` for a clean install. To remove everything,
-including secrets: `npx wrangler delete`.
+Then redeploy with `npm run deploy` for a clean install. To delete the Worker and all secrets entirely, run `npx wrangler delete`.
+
+### Option B: Programmatic reset endpoint for Bold BI
+
+If you want to wipe and recreate only the Bold BI container on demand without affecting PostgreSQL or using the CLI, you can enable the optional reset route:
+
+1. Configure an optional administrative reset secret (at least 32 characters):
+   ```powershell
+   npx wrangler secret put BOLDBI_RESET_TOKEN
+   ```
+
+2. Trigger the reset endpoint:
+   ```powershell
+   $resetHeaders = @{
+       Authorization   = "Bearer <BOLDBI_RESET_TOKEN>"
+       "X-Reset-Target" = "boldbi-fresh"
+   }
+   Invoke-RestMethod "$url/_internal/boldbi/reset" -Method Post -Headers $resetHeaders
+   ```
+
+This terminates the Bold BI container instance and clears its local state. The next browser request automatically starts a clean container.
 
 References: [Containers](https://developers.cloudflare.com/containers/),
 [container lifecycle](https://developers.cloudflare.com/containers/concepts/architecture/).
