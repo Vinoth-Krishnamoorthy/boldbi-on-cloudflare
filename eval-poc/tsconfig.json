@@ -1,6 +1,0 @@
-{
-  "extends": "../tsconfig.json",
-  "compilerOptions": { "types": ["../worker-configuration.d.ts", "node"] },
-  "include": ["../worker-configuration.d.ts", "worker.ts", "../deployment-worker.ts", "../fresh-poc/diagnostic-modules.d.ts"],
-  "exclude": []
-}

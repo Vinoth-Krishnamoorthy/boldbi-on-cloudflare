@@ -22,8 +22,8 @@ import (
 	"github.com/coder/websocket"
 )
 
-const tunnelPath = "/_poc/postgres/tunnel"
-const healthPath = "/_poc/postgres/health"
+const tunnelPath = "/_internal/postgres/tunnel"
+const healthPath = "/_internal/postgres/health"
 
 func authorized(r *http.Request, token string) bool {
 	want := "Bearer " + token
@@ -188,10 +188,10 @@ func startProxy(ctx context.Context, mode, token string) error {
 		go func() { <-ctx.Done(); _ = srv.Close() }()
 		return srv.ListenAndServe()
 	}
-	endpoint := os.Getenv("POC_TUNNEL_URL")
+	endpoint := os.Getenv("TUNNEL_URL")
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Path != tunnelPath {
-		return errors.New("POC_TUNNEL_URL must be an HTTPS Worker URL ending in " + tunnelPath)
+		return errors.New("TUNNEL_URL must be an HTTPS Worker URL ending in " + tunnelPath)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:15432")
 	if err != nil {
@@ -203,18 +203,18 @@ func startProxy(ctx context.Context, mode, token string) error {
 
 func run(ctx context.Context, args []string) error {
 	if len(args) < 2 || (args[0] != "server" && args[0] != "client") {
-		return errors.New("usage: poc-proxy server|client COMMAND [ARG...]")
+		return errors.New("usage: tunnel-proxy server|client COMMAND [ARG...]")
 	}
-	token := os.Getenv("POC_TUNNEL_TOKEN")
+	token := os.Getenv("TUNNEL_TOKEN")
 	if len(token) < 32 {
-		return errors.New("POC_TUNNEL_TOKEN must contain at least 32 characters")
+		return errors.New("TUNNEL_TOKEN must contain at least 32 characters")
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	proxyExit := make(chan error, 1)
 	go func() { proxyExit <- startProxy(ctx, args[0], token) }()
 	if args[0] == "client" {
-		if err := waitForTunnel(ctx, os.Getenv("POC_TUNNEL_URL"), token); err != nil {
+		if err := waitForTunnel(ctx, os.Getenv("TUNNEL_URL"), token); err != nil {
 			return err
 		}
 		log.Print("Database tunnel ready; local PostgreSQL endpoint is 127.0.0.1:15432")

@@ -1,4 +1,4 @@
-module boldbi-poc/proxy
+module boldbi/proxy
 
 go 1.25.0
 

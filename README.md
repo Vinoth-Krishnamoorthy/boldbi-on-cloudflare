@@ -1,50 +1,86 @@
 # Bold BI on Cloudflare Containers
 
-This POC supports two deployment options on the existing `ticket287457` Worker.
-Choose the guide for the application you want to deploy.
+This repository contains two independent, standalone deployment options for running Syncfusion Bold BI on Cloudflare Containers (microVMs on Durable Objects).
 
-| Deployment | Step-by-step guide | Configuration | Container images published |
-| --- | --- | --- | --- |
-| Bold BI with separate PostgreSQL | [Normal deployment](DEPLOYMENT-DIRECT-COMMANDS.md) | `fresh-poc/wrangler.normal.jsonc` | Bold BI and PostgreSQL |
-| Bold BI evaluation with bundled PostgreSQL | [Eval deployment](EVAL-DEPLOYMENT-DIRECT-COMMANDS.md) | `eval-poc/wrangler.eval.jsonc` | Eval only |
+There is **no shared Worker** and **no dependency** between the two options. Each folder is a self-contained project with its own Worker, configuration, Dockerfile(s), dependencies, and tests.
 
-Both guides use direct Wrangler commands. They include prerequisites, Worker
-name/account settings, Dockerfile changes, deployment and application startup.
-The normal guide explains the authenticated TCP-over-WebSocket database tunnel.
-The HTTPS dashboard-loading corrections and eval startup settings are included
-in the source.
+---
 
-Both configurations update the same Worker. The last full deployment selects
-which application its public URL serves. Existing container applications are
-listed account-wide. For an intentional fresh installation, follow
-[reset and redeployment](RESET-AND-REDEPLOY.md) using current application IDs.
+## Choose your deployment
 
-Keep both source folders and the root package/configuration files together.
-`deployment-worker.ts` imports both Worker modules to retain the existing Durable
-Object namespaces; the selected configuration controls which images publish.
-See [the file inventory](fresh-poc/WORKSPACE-FILES.md) for required files.
+| Deployment | Directory | Architecture | Best For |
+|---|---|---|---|
+| [**Normal Deployment**](fresh/DEPLOYMENT.md) | `fresh/` | Two separate containers (Bold BI + PostgreSQL 17) connected by an authenticated TCP-over-WebSocket tunnel. | Production-like setups, decoupled database, scalable architectures. |
+| [**Evaluation Deployment**](eval/DEPLOYMENT.md) | `eval/` | Single container with Bold BI and PostgreSQL 15 bundled together. | Quick demos, feature testing, evaluations. Zero database networking to manage. |
 
-## Local validation
+---
 
-Run from the project root after `npm ci`:
+## Quick start
 
+### Normal Deployment (Separate PostgreSQL)
 ```powershell
-npm run check
-npm test
+Set-Location 'fresh'
+npm install
+# Edit wrangler.jsonc to set your account_id
+# Configure secrets:
+npx wrangler secret put POSTGRES_PASSWORD
+npx wrangler secret put TUNNEL_TOKEN
+# Deploy:
+npm run deploy
 ```
+See the [Fresh Deployment Guide](fresh/DEPLOYMENT.md) for full step-by-step instructions.
 
-The automated tests are source files for checking routing, deployment scope,
-HTTPS handling and diagnostics. Deployment does not require running test helpers.
-Temporary diagnostic scripts, generated reports, caches and superseded deployment
-configurations have been removed.
+### Evaluation Deployment (Bundled PostgreSQL)
+```powershell
+Set-Location 'eval'
+npm install
+# Edit wrangler.jsonc to set your account_id
+# Configure secrets:
+npx wrangler secret put EVAL_DB_PASSWORD
+npx wrangler secret put EVAL_ADMIN_PASSWORD
+# Deploy:
+npm run deploy
+```
+See the [Eval Deployment Guide](eval/DEPLOYMENT.md) for full step-by-step instructions.
 
-## Sharing the project
+---
 
-Share the root documentation, package files, TypeScript files and both source
-folders. Exclude `node_modules/`, `.wrangler/`, local environment/secret files and
-newly generated logs. Dependencies can be restored with `npm ci`. Local
-`node_modules/` remains available for development.
+## Repository Structure & File Purpose
 
-Container storage in this POC is temporary. Stopping or replacing an instance
-can discard application and database files; it has no persistent volume or
-backup integration.
+```text
+boldbi-on-cloudflare/
+├── fresh/                      # Deployment option 1: Bold BI + separate PostgreSQL container
+│   ├── DEPLOYMENT.md           # Step-by-step deployment guide & setup instructions
+│   ├── wrangler.jsonc          # Cloudflare configuration (Worker name: boldbi-fresh, 2 containers)
+│   ├── worker.ts               # Edge reverse proxy, HTTPS/CSP handler, and database WebSocket bridge
+│   ├── Dockerfile.boldbi       # Bold BI container image with built-in tunnel-proxy client
+│   ├── Dockerfile.postgres     # PostgreSQL 17 container image with built-in tunnel-proxy server
+│   ├── proxy/                  # Lightweight Go proxy bridging TCP over authenticated WebSocket
+│   │   ├── main.go             # Tunnel client & server implementation
+│   │   ├── main_test.go        # Unit tests for WebSocket stream and proxy listeners
+│   │   ├── go.mod              # Go module definition (boldbi/proxy)
+│   │   └── go.sum              # Checksums for coder/websocket dependency
+│   ├── worker.test.ts          # Vitest suite verifying edge routing, headers, CSP, and tunnel auth
+│   ├── vitest.config.ts        # Vitest configuration for fresh/ test runner
+│   ├── tsconfig.json           # TypeScript configuration with Workers runtime types
+│   ├── package.json            # Node.js dependencies (@cloudflare/containers, vitest, wrangler)
+│   ├── package-lock.json       # Deterministic dependency lockfile
+│   ├── .dockerignore           # Excludes local files from container image build context
+│   └── .gitignore              # Ignores node_modules, .wrangler, and local environment files
+│
+├── eval/                       # Deployment option 2: Bold BI Eval (single bundled container)
+│   ├── DEPLOYMENT.md           # Step-by-step deployment guide & setup instructions
+│   ├── wrangler.jsonc          # Cloudflare configuration (Worker name: boldbi-eval, 1 container)
+│   ├── worker.ts               # Edge reverse proxy, readiness checks, HTTPS/CSP normalization
+│   ├── Dockerfile              # Container image based on syncfusion/boldbi:17.1.30-eval
+│   ├── cloudflare-entrypoint.sh # Container startup script: sets up microVM shm, starts PostgreSQL, syncs passwords
+│   ├── worker.test.ts          # Vitest suite verifying HTTP readiness probing and edge security
+│   ├── vitest.config.ts        # Vitest configuration for eval/ test runner
+│   ├── tsconfig.json           # TypeScript configuration with Workers runtime types
+│   ├── package.json            # Node.js dependencies (@cloudflare/containers, vitest, wrangler)
+│   ├── package-lock.json       # Deterministic dependency lockfile
+│   ├── .dockerignore           # Excludes local files from container image build context
+│   └── .gitignore              # Ignores node_modules, .wrangler, and local environment files
+│
+└── README.md                   # Project overview, comparison table, and directory inventory
+```

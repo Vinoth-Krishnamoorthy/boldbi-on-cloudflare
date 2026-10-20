@@ -1,0 +1,11 @@
+FROM golang:1.25-alpine AS proxy-build
+WORKDIR /src
+COPY proxy/ ./
+RUN go mod download && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tunnel-proxy .
+
+FROM postgres:17
+COPY --from=proxy-build /tunnel-proxy /usr/local/bin/tunnel-proxy
+# Cloudflare microVMs may lack paths normally supplied by a Docker host.
+RUN mkdir -p /var/run/postgresql
+ENTRYPOINT ["/bin/sh", "-c", "mkdir -p /dev/shm /var/run/postgresql && chmod 1777 /dev/shm /var/run/postgresql && exec /usr/local/bin/tunnel-proxy server docker-entrypoint.sh postgres -c dynamic_shared_memory_type=mmap"]
+EXPOSE 8081

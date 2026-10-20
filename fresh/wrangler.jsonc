@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "boldbi-fresh",
+  "account_id": "<YOUR_CLOUDFLARE_ACCOUNT_ID>",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-16",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "containers": [
+    {
+      "class_name": "BoldBIContainer",
+      "image": "./Dockerfile.boldbi",
+      "image_build_context": ".",
+      "instance_type": "standard-4",
+      "max_instances": 1
+    },
+    {
+      "class_name": "PostgresContainer",
+      "image": "./Dockerfile.postgres",
+      "image_build_context": ".",
+      "instance_type": "standard-1",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BOLDBI_CONTAINER",
+        "class_name": "BoldBIContainer"
+      },
+      {
+        "name": "POSTGRES_CONTAINER",
+        "class_name": "PostgresContainer"
+      }
+    ]
+  },
+  "exports": {
+    "BoldBIContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    },
+    "PostgresContainer": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  }
+}
