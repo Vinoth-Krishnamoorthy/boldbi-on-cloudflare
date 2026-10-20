@@ -199,11 +199,11 @@ dist
 !.dev.vars.example
 
 ### POC generated reports ###
-fresh-poc/logs-*.json
-fresh-poc/logs-*.csv
-fresh-poc/boldbi-admin-diagnostics-*.json
-fresh-poc/boldbi-container-diagnostics-*.json
-fresh-poc/boldbi-ssh-error-*.json
-fresh-poc/boldbi-worker-error-*.json
-fresh-poc/diagnostics-ticket*.json
+fresh/logs-*.json
+fresh/logs-*.csv
+fresh/boldbi-admin-diagnostics-*.json
+fresh/boldbi-container-diagnostics-*.json
+fresh/boldbi-ssh-error-*.json
+fresh/boldbi-worker-error-*.json
+fresh/diagnostics-ticket*.json
 **/__pycache__/

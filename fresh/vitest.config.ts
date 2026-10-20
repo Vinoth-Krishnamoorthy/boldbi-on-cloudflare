@@ -10,5 +10,5 @@ export default defineConfig({
       }
     },
   }],
-  test: { include: ["fresh-poc/worker.test.ts"] },
+  test: { include: ["worker.test.ts"] },
 });

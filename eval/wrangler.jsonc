@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "boldbi-eval",
+  "account_id": "<YOUR_CLOUDFLARE_ACCOUNT_ID>",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-16",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "containers": [
+    {
+      "class_name": "BoldBIEvalContainer",
+      "image": "./Dockerfile",
+      "image_build_context": ".",
+      "instance_type": "standard-4",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "BOLDBI_EVAL_CONTAINER", "class_name": "BoldBIEvalContainer" }]
+  },
+  "exports": {
+    "BoldBIEvalContainer": { "type": "durable-object", "storage": "sqlite" }
+  }
+}

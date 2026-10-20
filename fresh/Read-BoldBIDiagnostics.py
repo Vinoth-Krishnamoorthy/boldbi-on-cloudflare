@@ -41,7 +41,7 @@ def proxy_configuration():
     try:
         endpoint = urlsplit(settings.get("POC_TUNNEL_URL", ""))
         allowed = (
-            endpoint.scheme == "https" and endpoint.hostname == "ticket287457.synctest.workers.dev"
+            endpoint.scheme == "https" and endpoint.hostname == os.environ.get("POC_EXPECTED_HOST", "")
             and endpoint.port in (None, 443) and not endpoint.username and not endpoint.password
             and endpoint.path == "/_poc/postgres/tunnel" and not endpoint.query and not endpoint.fragment
         )

@@ -15,11 +15,11 @@ spec.loader.exec_module(diagnostic)
 
 
 class DiagnosticTests(unittest.TestCase):
-    def configuration(self, host="ticket287457.synctest.workers.dev", expected_token=None):
+    def configuration(self, host="worker.example.workers.dev", expected_token=None):
         token = "test-only-tunnel-secret-at-least-32-characters"
         data = ("UNRELATED_SECRET=never-export-this\0POC_TUNNEL_TOKEN=" + token + "\0POC_TUNNEL_URL=https://" + host + "/_poc/postgres/tunnel\0").encode()
         expected = hashlib.sha256((expected_token or token).encode()).hexdigest()
-        with patch("builtins.open", return_value=io.BytesIO(data)), patch.dict(os.environ, {"POC_EXPECTED_TOKEN_SHA256": expected}):
+        with patch("builtins.open", return_value=io.BytesIO(data)), patch.dict(os.environ, {"POC_EXPECTED_TOKEN_SHA256": expected, "POC_EXPECTED_HOST": "worker.example.workers.dev"}):
             result = diagnostic.proxy_configuration()
         self.assertNotIn(token, json.dumps(result[0]))
         self.assertNotIn(expected, json.dumps(result[0]))
@@ -29,7 +29,7 @@ class DiagnosticTests(unittest.TestCase):
     def test_compares_runtime_token_without_disclosing_environment(self):
         details, endpoint, token = self.configuration()
         self.assertTrue(details["proxyTokenMatchesWorker"])
-        self.assertEqual(endpoint.hostname, "ticket287457.synctest.workers.dev")
+        self.assertEqual(endpoint.hostname, "worker.example.workers.dev")
         details, _, _ = self.configuration(expected_token="different-current-worker-token")
         self.assertFalse(details["proxyTokenMatchesWorker"])
 
@@ -44,7 +44,7 @@ class DiagnosticTests(unittest.TestCase):
         connection = Mock()
         connection.getresponse.return_value.status = 101
         connection.getresponse.return_value.getheader.return_value = accept
-        endpoint = diagnostic.urlsplit("https://ticket287457.synctest.workers.dev/_poc/postgres/tunnel")
+        endpoint = diagnostic.urlsplit("https://worker.example.workers.dev/_poc/postgres/tunnel")
         with patch.object(diagnostic.http.client, "HTTPSConnection", return_value=connection), patch.object(diagnostic.os, "urandom", return_value=b"x" * 16):
             result = diagnostic.probe_upstream(endpoint, "test-secret", upgrade=True)
         self.assertEqual(result, {"directWebSocketHttpStatus": 101, "directWebSocketUpgradeValid": True})

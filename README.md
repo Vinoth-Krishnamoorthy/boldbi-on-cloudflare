@@ -1,50 +1,70 @@
 # Bold BI on Cloudflare Containers
 
-This POC supports two deployment options on the existing `ticket287457` Worker.
-Choose the guide for the application you want to deploy.
+This repository contains two independent, standalone deployment options for running Syncfusion Bold BI on Cloudflare Containers (microVMs on Durable Objects).
 
-| Deployment | Step-by-step guide | Configuration | Container images published |
-| --- | --- | --- | --- |
-| Bold BI with separate PostgreSQL | [Normal deployment](DEPLOYMENT-DIRECT-COMMANDS.md) | `fresh-poc/wrangler.normal.jsonc` | Bold BI and PostgreSQL |
-| Bold BI evaluation with bundled PostgreSQL | [Eval deployment](EVAL-DEPLOYMENT-DIRECT-COMMANDS.md) | `eval-poc/wrangler.eval.jsonc` | Eval only |
+There is **no shared Worker** and **no dependency** between the two options. Each folder is a self-contained project with its own Worker, configuration, Dockerfile(s), dependencies, and tests.
 
-Both guides use direct Wrangler commands. They include prerequisites, Worker
-name/account settings, Dockerfile changes, deployment and application startup.
-The normal guide explains the authenticated TCP-over-WebSocket database tunnel.
-The HTTPS dashboard-loading corrections and eval startup settings are included
-in the source.
+---
 
-Both configurations update the same Worker. The last full deployment selects
-which application its public URL serves. Existing container applications are
-listed account-wide. For an intentional fresh installation, follow
-[reset and redeployment](RESET-AND-REDEPLOY.md) using current application IDs.
+## Choose your deployment
 
-Keep both source folders and the root package/configuration files together.
-`deployment-worker.ts` imports both Worker modules to retain the existing Durable
-Object namespaces; the selected configuration controls which images publish.
-See [the file inventory](fresh-poc/WORKSPACE-FILES.md) for required files.
+| Deployment | Directory | Architecture | Best For |
+|---|---|---|---|
+| [**Normal Deployment**](fresh/DEPLOYMENT.md) | `fresh/` | Two separate containers (Bold BI + PostgreSQL 17) connected by an authenticated TCP-over-WebSocket tunnel. | Production-like setups, decoupled database, scalable architectures. |
+| [**Evaluation Deployment**](eval/DEPLOYMENT.md) | `eval/` | Single container with Bold BI and PostgreSQL 15 bundled together. | Quick demos, feature testing, evaluations. Zero database networking to manage. |
 
-## Local validation
+---
 
-Run from the project root after `npm ci`:
+## Quick start
 
+### Normal Deployment (Separate PostgreSQL)
 ```powershell
-npm run check
-npm test
+Set-Location 'fresh'
+npm install
+# Edit wrangler.jsonc to set your account_id
+# Configure secrets:
+npx wrangler secret put POSTGRES_PASSWORD
+npx wrangler secret put POC_TUNNEL_TOKEN
+# Deploy:
+npm run deploy
 ```
+See the [Fresh Deployment Guide](fresh/DEPLOYMENT.md) for full step-by-step instructions.
 
-The automated tests are source files for checking routing, deployment scope,
-HTTPS handling and diagnostics. Deployment does not require running test helpers.
-Temporary diagnostic scripts, generated reports, caches and superseded deployment
-configurations have been removed.
+### Evaluation Deployment (Bundled PostgreSQL)
+```powershell
+Set-Location 'eval'
+npm install
+# Edit wrangler.jsonc to set your account_id
+# Configure secrets:
+npx wrangler secret put EVAL_DB_PASSWORD
+npx wrangler secret put EVAL_ADMIN_PASSWORD
+# Deploy:
+npm run deploy
+```
+See the [Eval Deployment Guide](eval/DEPLOYMENT.md) for full step-by-step instructions.
 
-## Sharing the project
+---
 
-Share the root documentation, package files, TypeScript files and both source
-folders. Exclude `node_modules/`, `.wrangler/`, local environment/secret files and
-newly generated logs. Dependencies can be restored with `npm ci`. Local
-`node_modules/` remains available for development.
+## Repository Structure
 
-Container storage in this POC is temporary. Stopping or replacing an instance
-can discard application and database files; it has no persistent volume or
-backup integration.
+```text
+boldbi-on-cloudflare/
+├── fresh/                  # Bold BI + separate PostgreSQL container
+│   ├── wrangler.jsonc      # Worker configuration (name: boldbi-fresh)
+│   ├── worker.ts           # Worker routing and tunnel bridge
+│   ├── Dockerfile.boldbi   # Bold BI container image
+│   ├── Dockerfile.postgres # PostgreSQL 17 container image
+│   ├── proxy/              # Go TCP-over-WebSocket tunnel proxy
+│   ├── package.json        # Dependencies and scripts
+│   └── DEPLOYMENT.md       # Step-by-step deployment guide
+│
+├── eval/                   # Bold BI Eval (bundled PostgreSQL)
+│   ├── wrangler.jsonc      # Worker configuration (name: boldbi-eval)
+│   ├── worker.ts           # Worker routing and header normalizer
+│   ├── Dockerfile          # Bundled eval image (syncfusion/boldbi:17.1.30-eval)
+│   ├── cloudflare-entrypoint.sh # MicroVM startup wrapper
+│   ├── package.json        # Dependencies and scripts
+│   └── DEPLOYMENT.md       # Step-by-step deployment guide
+│
+└── README.md               # This directory selector
+```
