@@ -35,9 +35,19 @@ Edit `wrangler.jsonc`: set `account_id` to your account. Change `name`
 
 ## 2. Set secrets
 
+Generate or define a random token with at least 32 characters in PowerShell. Saving it
+to a `$token` variable ensures the exact same value is used both when storing the secret
+and when making authenticated health check requests:
+
 ```powershell
+# Set your chosen database password
 npx wrangler secret put POSTGRES_PASSWORD
-npx wrangler secret put TUNNEL_TOKEN      # at least 32 random characters
+
+# Define a 32+ character tunnel token in a PowerShell variable (example below)
+$token = "mysecrettoken1234567890abcdef123456"
+
+# Put the token as secret on Cloudflare (paste the token when prompted)
+npx wrangler secret put TUNNEL_TOKEN
 ```
 
 These two secrets are all that is required for standard deployment and operation.
@@ -53,11 +63,12 @@ Wait until both applications show Ready (0 instances). Instances start on demand
 
 ## 4. Start the containers
 
-Set `$url` to the Worker URL printed by the deploy. Start PostgreSQL first:
+Set `$url` to the Worker URL printed by the deploy. Use the `$token` variable set earlier
+so the bearer token matches `TUNNEL_TOKEN` exactly:
 
 ```powershell
 $url = 'https://boldbi-fresh.<your-subdomain>.workers.dev'
-$h = @{ Authorization = "Bearer <TUNNEL_TOKEN>" }
+$h = @{ Authorization = "Bearer $token" }
 Invoke-RestMethod "$url/_internal/postgres/health" -Headers $h -TimeoutSec 180
 ```
 
@@ -80,7 +91,7 @@ Complete administrator, license and site setup, then open a dashboard to verify.
 
 ## 6. Updates and tests
 
-- Code-only update: `npm run deploy:worker` (keeps the current images).
+- Code-only update: `npm run deploy:worker` (keeps the current image).
 - Image change: `npm run deploy`.
 - Checks: `npm run check`, `npm test`, `go test ./...` inside `proxy/`.
 
