@@ -45,26 +45,42 @@ See the [Eval Deployment Guide](eval/DEPLOYMENT.md) for full step-by-step instru
 
 ---
 
-## Repository Structure
+## Repository Structure & File Purpose
 
 ```text
 boldbi-on-cloudflare/
-├── fresh/                  # Bold BI + separate PostgreSQL container
-│   ├── wrangler.jsonc      # Worker configuration (name: boldbi-fresh)
-│   ├── worker.ts           # Worker routing and tunnel bridge
-│   ├── Dockerfile.boldbi   # Bold BI container image
-│   ├── Dockerfile.postgres # PostgreSQL 17 container image
-│   ├── proxy/              # Go TCP-over-WebSocket tunnel proxy
-│   ├── package.json        # Dependencies and scripts
-│   └── DEPLOYMENT.md       # Step-by-step deployment guide
+├── fresh/                      # Deployment option 1: Bold BI + separate PostgreSQL container
+│   ├── DEPLOYMENT.md           # Step-by-step deployment guide & setup instructions
+│   ├── wrangler.jsonc          # Cloudflare configuration (Worker name: boldbi-fresh, 2 containers)
+│   ├── worker.ts               # Edge reverse proxy, HTTPS/CSP handler, and database WebSocket bridge
+│   ├── Dockerfile.boldbi       # Bold BI container image with built-in tunnel-proxy client
+│   ├── Dockerfile.postgres     # PostgreSQL 17 container image with built-in tunnel-proxy server
+│   ├── proxy/                  # Lightweight Go proxy bridging TCP over authenticated WebSocket
+│   │   ├── main.go             # Tunnel client & server implementation
+│   │   ├── main_test.go        # Unit tests for WebSocket stream and proxy listeners
+│   │   ├── go.mod              # Go module definition (boldbi/proxy)
+│   │   └── go.sum              # Checksums for coder/websocket dependency
+│   ├── worker.test.ts          # Vitest suite verifying edge routing, headers, CSP, and tunnel auth
+│   ├── vitest.config.ts        # Vitest configuration for fresh/ test runner
+│   ├── tsconfig.json           # TypeScript configuration with Workers runtime types
+│   ├── package.json            # Node.js dependencies (@cloudflare/containers, vitest, wrangler)
+│   ├── package-lock.json       # Deterministic dependency lockfile
+│   ├── .dockerignore           # Excludes local files from container image build context
+│   └── .gitignore              # Ignores node_modules, .wrangler, and local environment files
 │
-├── eval/                   # Bold BI Eval (bundled PostgreSQL)
-│   ├── wrangler.jsonc      # Worker configuration (name: boldbi-eval)
-│   ├── worker.ts           # Worker routing and header normalizer
-│   ├── Dockerfile          # Bundled eval image (syncfusion/boldbi:17.1.30-eval)
-│   ├── cloudflare-entrypoint.sh # MicroVM startup wrapper
-│   ├── package.json        # Dependencies and scripts
-│   └── DEPLOYMENT.md       # Step-by-step deployment guide
+├── eval/                       # Deployment option 2: Bold BI Eval (single bundled container)
+│   ├── DEPLOYMENT.md           # Step-by-step deployment guide & setup instructions
+│   ├── wrangler.jsonc          # Cloudflare configuration (Worker name: boldbi-eval, 1 container)
+│   ├── worker.ts               # Edge reverse proxy, readiness checks, HTTPS/CSP normalization
+│   ├── Dockerfile              # Container image based on syncfusion/boldbi:17.1.30-eval
+│   ├── cloudflare-entrypoint.sh # Container startup script: sets up microVM shm, starts PostgreSQL, syncs passwords
+│   ├── worker.test.ts          # Vitest suite verifying HTTP readiness probing and edge security
+│   ├── vitest.config.ts        # Vitest configuration for eval/ test runner
+│   ├── tsconfig.json           # TypeScript configuration with Workers runtime types
+│   ├── package.json            # Node.js dependencies (@cloudflare/containers, vitest, wrangler)
+│   ├── package-lock.json       # Deterministic dependency lockfile
+│   ├── .dockerignore           # Excludes local files from container image build context
+│   └── .gitignore              # Ignores node_modules, .wrangler, and local environment files
 │
-└── README.md               # This directory selector
+└── README.md                   # Project overview, comparison table, and directory inventory
 ```
