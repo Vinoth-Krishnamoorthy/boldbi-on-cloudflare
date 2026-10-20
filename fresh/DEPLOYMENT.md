@@ -74,7 +74,12 @@ Invoke-RestMethod "$url/_internal/postgres/health" -Headers $h -TimeoutSec 180
 
 Expect `ok` and `postgresTcpReachable` to be `True`. Then open
 `<url>/ums/startup` in a browser; this starts Bold BI. Allow a few minutes.
-`npx wrangler containers list` should show both applications active.
+`npx wrangler containers list` shows `LIVE INSTANCES` as 0 even while running, so check
+each application's instances with its ID from the list:
+
+```powershell
+npx wrangler containers instances <ContainerID>
+```
 
 ## 5. Configure Bold BI
 
@@ -133,6 +138,28 @@ If you want to wipe and recreate only the Bold BI container on demand without af
    ```
 
 This terminates the Bold BI container instance and clears its local state. The next browser request automatically starts a clean container.
+
+## 8. Uninstall
+
+Removes everything this guide created. This is permanent and discards all data.
+
+1. Delete both container applications (IDs from `npx wrangler containers list`):
+
+   ```powershell
+   npx wrangler containers delete <boldbi-id>
+   npx wrangler containers delete <postgres-id>
+   ```
+
+2. Delete the Worker, which also removes its secrets and Durable Objects
+   (requires delete permission on the Worker):
+
+   ```powershell
+   npx wrangler delete
+   ```
+
+3. Optional: remove the pushed images with `npx wrangler containers images list`
+   and `npx wrangler containers images delete <image>`, and delete local
+   `node_modules` if the folder is no longer needed.
 
 References: [Containers](https://developers.cloudflare.com/containers/),
 [container lifecycle](https://developers.cloudflare.com/containers/concepts/architecture/).

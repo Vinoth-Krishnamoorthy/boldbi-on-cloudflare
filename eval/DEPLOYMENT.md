@@ -87,6 +87,11 @@ npx wrangler containers list
 ```
 
 Wait until the application shows Ready. The instance starts on demand.
+`LIVE INSTANCES` shows 0 until traffic arrives; check a running instance with its ID:
+
+```powershell
+npx wrangler containers instances <ContainerID>
+```
 
 ## 4. Open and sign in
 
@@ -122,6 +127,27 @@ npx wrangler containers delete <id>
 
 Redeploy with `npm run deploy` for a clean install. To remove everything,
 including secrets: `npx wrangler delete`.
+
+## 7. Uninstall
+
+Removes everything this guide created. This is permanent and discards all data.
+
+1. Delete the container application (ID from `npx wrangler containers list`):
+
+   ```powershell
+   npx wrangler containers delete <id>
+   ```
+
+2. Delete the Worker, which also removes its secrets and Durable Objects
+   (requires delete permission on the Worker):
+
+   ```powershell
+   npx wrangler delete
+   ```
+
+3. Optional: remove the pushed image with `npx wrangler containers images list`
+   and `npx wrangler containers images delete <image>`, and delete local
+   `node_modules` if the folder is no longer needed.
 
 References: [Vendor eval deployment](https://help.boldbi.com/deploying-bold-bi/deploying-on-docker/bold-bi-on-docker/bold-bi-eval-on-single-container/),
 [container lifecycle](https://developers.cloudflare.com/containers/concepts/architecture/).
