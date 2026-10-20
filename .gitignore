@@ -198,7 +198,7 @@ dist
 .dev.vars*
 !.dev.vars.example
 
-### POC generated reports ###
+### Temporary generated reports ###
 fresh/logs-*.json
 fresh/logs-*.csv
 fresh/boldbi-admin-diagnostics-*.json

@@ -24,7 +24,7 @@ npm install
 # Edit wrangler.jsonc to set your account_id
 # Configure secrets:
 npx wrangler secret put POSTGRES_PASSWORD
-npx wrangler secret put POC_TUNNEL_TOKEN
+npx wrangler secret put TUNNEL_TOKEN
 # Deploy:
 npm run deploy
 ```

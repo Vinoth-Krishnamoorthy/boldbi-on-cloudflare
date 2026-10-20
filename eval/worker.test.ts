@@ -15,7 +15,7 @@ function setup() {
   const evalFetch = vi.fn(async (_request: Request) => new Response("eval", { headers: { "Content-Type": "text/html" } }));
   const getByName = vi.fn(() => ({ fetch: evalFetch }));
   const env = { BOLDBI_EVAL_CONTAINER: { getByName }, EVAL_DB_PASSWORD: "test-db", EVAL_ADMIN_PASSWORD: "test-admin" };
-  const fetch = (path: string, cookie = "", method = "GET") => worker.fetch(new Request(`https://poc.example${path}`, { method, headers: { Cookie: cookie } }), env as never);
+  const fetch = (path: string, cookie = "", method = "GET") => worker.fetch(new Request(`https://app.example${path}`, { method, headers: { Cookie: cookie } }), env as never);
   return { fetch, evalFetch, getByName, env };
 }
 describe("eval Worker", () => {
@@ -24,7 +24,7 @@ describe("eval Worker", () => {
     const container = new BoldBIEvalContainer({} as never, {
       EVAL_DB_PASSWORD: "test-db", EVAL_ADMIN_PASSWORD: "test-admin",
     } as never);
-    const response = await container.fetch(new Request("https://poc.example/"));
+    const response = await container.fetch(new Request("https://app.example/"));
     expect(await response.text()).toBe("container-origin");
     expect(readiness).toHaveBeenCalledOnce();
     expect(readiness.mock.calls[0][0].ports).toEqual([80]);

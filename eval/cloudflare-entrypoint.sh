@@ -9,7 +9,7 @@ chmod 2775 /var/run/postgresql
 pg_conftool 15 main set dynamic_shared_memory_type mmap
 
 # The vendor image ships an initialized cluster. Synchronize its role password
-# with this eval application's credentials, without changing the other POC DB.
+# with this eval application's credentials, without changing the independent database.
 service postgresql start
 if [[ -z "${BOLD_SERVICES_DB_PASSWORD:-}" ]]; then
     echo 'BOLD_SERVICES_DB_PASSWORD is required.' >&2

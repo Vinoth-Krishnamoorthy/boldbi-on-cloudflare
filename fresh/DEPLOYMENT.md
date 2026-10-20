@@ -10,7 +10,7 @@ proxy (`proxy/`) carries PostgreSQL traffic over an authenticated WebSocket:
 
 ```text
 Bold BI  ->  127.0.0.1:15432  (Go proxy client, inside the Bold BI container)
-         ->  WSS  <worker-url>/_poc/postgres/tunnel   (Bearer POC_TUNNEL_TOKEN)
+         ->  WSS  <worker-url>/_internal/postgres/tunnel   (Bearer TUNNEL_TOKEN)
          ->  Worker  ->  PostgreSQL container: Go proxy server :8081
          ->  127.0.0.1:5432  PostgreSQL 17
 ```
@@ -37,10 +37,10 @@ Edit `wrangler.jsonc`: set `account_id` to your account. Change `name`
 
 ```powershell
 npx wrangler secret put POSTGRES_PASSWORD
-npx wrangler secret put POC_TUNNEL_TOKEN      # at least 32 random characters
+npx wrangler secret put TUNNEL_TOKEN      # at least 32 random characters
 ```
 
-Optional: `POC_BOLDBI_RESET_TOKEN` (at least 32 characters, enables the reset route).
+Optional: `BOLDBI_RESET_TOKEN` (at least 32 characters, enables the reset route).
 
 ## 3. Deploy
 
@@ -57,8 +57,8 @@ Set `$url` to the Worker URL printed by the deploy. Start PostgreSQL first:
 
 ```powershell
 $url = 'https://boldbi-fresh.<your-subdomain>.workers.dev'
-$h = @{ Authorization = "Bearer <POC_TUNNEL_TOKEN>" }
-Invoke-RestMethod "$url/_poc/postgres/health" -Headers $h -TimeoutSec 180
+$h = @{ Authorization = "Bearer <TUNNEL_TOKEN>" }
+Invoke-RestMethod "$url/_internal/postgres/health" -Headers $h -TimeoutSec 180
 ```
 
 Expect `ok` and `postgresTcpReachable` to be `True`. Then open

@@ -12,46 +12,46 @@ function setup() {
   const boldbiFetch = vi.fn(async () => new Response("boldbi"));
   const destroyBoldBI = vi.fn(async () => {});
   const env = {
-    POC_BOLDBI_RESET_TOKEN: undefined as string | undefined,
-    POC_TUNNEL_TOKEN: "test-token-with-more-than-thirty-two-characters",
+    BOLDBI_RESET_TOKEN: undefined as string | undefined,
+    TUNNEL_TOKEN: "test-token-with-more-than-thirty-two-characters",
     POSTGRES_PASSWORD: "test-only-password",
     POSTGRES_CONTAINER: { getByName: vi.fn(() => ({ fetch: postgresFetch })) },
     BOLDBI_CONTAINER: { getByName: vi.fn(() => ({ fetch: boldbiFetch, destroy: destroyBoldBI })) },
   };
   // These tests exercise routing/authentication without starting container VMs.
   const fetch = (path: string, init?: RequestInit) =>
-    worker.fetch(new Request("https://poc.example" + path, init), env as never);
+    worker.fetch(new Request("https://app.example" + path, init), env as never);
   return { env, fetch, postgresFetch, boldbiFetch, destroyBoldBI };
 }
 
-describe("fresh POC routing security", () => {
+describe("fresh routing security", () => {
   it("fails closed before secrets have been configured", async () => {
     const { env, fetch } = setup();
-    env.POC_TUNNEL_TOKEN = "";
+    env.TUNNEL_TOKEN = "";
     expect((await fetch("/")).status).toBe(503);
     expect(env.BOLDBI_CONTAINER.getByName).not.toHaveBeenCalled();
   });
 
   it("does not start a database for unauthorized calls", async () => {
     const { env, fetch } = setup();
-    expect((await fetch("/_poc/postgres/tunnel")).status).toBe(401);
-    expect((await fetch("/_poc/postgres/health", { headers: { Authorization: "Bearer wrong" } })).status).toBe(401);
+    expect((await fetch("/_internal/postgres/tunnel")).status).toBe(401);
+    expect((await fetch("/_internal/postgres/health", { headers: { Authorization: "Bearer wrong" } })).status).toBe(401);
     expect(env.POSTGRES_CONTAINER.getByName).not.toHaveBeenCalled();
   });
 
   it("forwards an authorized tunnel request with its authentication header", async () => {
     const { env, fetch, postgresFetch } = setup();
-    const authorization = "Bearer " + env.POC_TUNNEL_TOKEN;
-    await fetch("/_poc/postgres/tunnel", { headers: { Authorization: authorization, Upgrade: "websocket" } });
+    const authorization = "Bearer " + env.TUNNEL_TOKEN;
+    await fetch("/_internal/postgres/tunnel", { headers: { Authorization: authorization, Upgrade: "websocket" } });
     expect(env.POSTGRES_CONTAINER.getByName).toHaveBeenCalledWith("postgres-fresh");
     expect(postgresFetch.mock.calls[0][0].headers.get("Authorization")).toBe(authorization);
   });
 
   it("restricts private endpoints and methods", async () => {
     const { env, fetch } = setup();
-    const headers = { Authorization: "Bearer " + env.POC_TUNNEL_TOKEN };
-    expect((await fetch("/_poc/delete", { headers })).status).toBe(404);
-    expect((await fetch("/_poc/postgres/health", { headers, method: "POST" })).status).toBe(405);
+    const headers = { Authorization: "Bearer " + env.TUNNEL_TOKEN };
+    expect((await fetch("/_internal/delete", { headers })).status).toBe(404);
+    expect((await fetch("/_internal/postgres/health", { headers, method: "POST" })).status).toBe(405);
     expect(env.POSTGRES_CONTAINER.getByName).not.toHaveBeenCalled();
   });
 
@@ -66,7 +66,7 @@ describe("fresh POC routing security", () => {
 describe("HTTPS dashboard resources behind the Worker", () => {
   it("upgrades insecure HTML subresources while retaining the original CSP and HTML", async () => {
     const { fetch, boldbiFetch } = setup();
-    const html = '<script src="http://poc.example/bi/designer/scripts/designerlocalization.js"></script>';
+    const html = '<script src="http://app.example/bi/designer/scripts/designerlocalization.js"></script>';
     boldbiFetch.mockResolvedValueOnce(new Response(html, { headers: {
       "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'self'",
     } }));
@@ -78,17 +78,17 @@ describe("HTTPS dashboard resources behind the Worker", () => {
     expect(await response.text()).toBe(html);
     const request = boldbiFetch.mock.calls[0][0];
     expect(request.headers.get("X-Forwarded-Proto")).toBe("https");
-    expect(request.headers.get("X-Forwarded-Host")).toBe("poc.example");
+    expect(request.headers.get("X-Forwarded-Host")).toBe("app.example");
   });
 
   it("keeps same-host application redirects on HTTPS", async () => {
     const { fetch, boldbiFetch } = setup();
     boldbiFetch.mockResolvedValueOnce(new Response(null, { status: 302, headers: {
-      Location: "http://poc.example/ums/startup?returnUrl=%2Fbi",
+      Location: "http://app.example/ums/startup?returnUrl=%2Fbi",
     } }));
     const response = await fetch("/");
     expect(response.status).toBe(302);
-    expect(response.headers.get("Location")).toBe("https://poc.example/ums/startup?returnUrl=%2Fbi");
+    expect(response.headers.get("Location")).toBe("https://app.example/ums/startup?returnUrl=%2Fbi");
   });
 
   it("preserves static resource streams and redirects to other hosts", async () => {
@@ -122,12 +122,12 @@ describe("explicit BoldBI disk reset", () => {
 
   it("cannot be authorized using the tunnel or diagnostic credential", async () => {
     const { env, fetch, destroyBoldBI } = setup();
-    expect((await fetch("/_poc/boldbi/reset", { method: "POST" })).status).toBe(401);
-    env.POC_BOLDBI_RESET_TOKEN = resetToken;
-    env.POC_DIAGNOSTIC_TOKEN = "independent-diagnostic-credential-at-least-32-characters";
-    for (const token of [env.POC_TUNNEL_TOKEN, env.POC_DIAGNOSTIC_TOKEN]) {
-      expect((await fetch("/_poc/boldbi/reset", { method: "POST", headers: {
-        Authorization: "Bearer " + token, "X-POC-Reset-Target": target,
+    expect((await fetch("/_internal/boldbi/reset", { method: "POST" })).status).toBe(401);
+    env.BOLDBI_RESET_TOKEN = resetToken;
+    
+    for (const token of [env.TUNNEL_TOKEN]) {
+      expect((await fetch("/_internal/boldbi/reset", { method: "POST", headers: {
+        Authorization: "Bearer " + token, "X-Reset-Target": target,
       } })).status).toBe(401);
     }
     expect(destroyBoldBI).not.toHaveBeenCalled();
@@ -135,19 +135,19 @@ describe("explicit BoldBI disk reset", () => {
 
   it("requires both POST and the fixed BoldBI target", async () => {
     const { env, fetch, destroyBoldBI } = setup();
-    env.POC_BOLDBI_RESET_TOKEN = resetToken;
+    env.BOLDBI_RESET_TOKEN = resetToken;
     const headers = { Authorization: "Bearer " + resetToken };
-    expect((await fetch("/_poc/boldbi/reset", { headers })).status).toBe(405);
-    expect((await fetch("/_poc/boldbi/reset", { method: "POST", headers })).status).toBe(400);
-    expect((await fetch("/_poc/boldbi/reset", { method: "POST", headers: { ...headers, "X-POC-Reset-Target": "postgres-fresh" } })).status).toBe(400);
+    expect((await fetch("/_internal/boldbi/reset", { headers })).status).toBe(405);
+    expect((await fetch("/_internal/boldbi/reset", { method: "POST", headers })).status).toBe(400);
+    expect((await fetch("/_internal/boldbi/reset", { method: "POST", headers: { ...headers, "X-Reset-Target": "postgres-fresh" } })).status).toBe(400);
     expect(destroyBoldBI).not.toHaveBeenCalled();
   });
 
   it("destroys only the existing BoldBI instance and leaves PostgreSQL untouched", async () => {
     const { env, fetch, destroyBoldBI, boldbiFetch } = setup();
-    env.POC_BOLDBI_RESET_TOKEN = resetToken;
-    const response = await fetch("/_poc/boldbi/reset", { method: "POST", headers: {
-      Authorization: "Bearer " + resetToken, "X-POC-Reset-Target": target,
+    env.BOLDBI_RESET_TOKEN = resetToken;
+    const response = await fetch("/_internal/boldbi/reset", { method: "POST", headers: {
+      Authorization: "Bearer " + resetToken, "X-Reset-Target": target,
     } });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, postgresReset: false, restartOnNextRequest: true });
@@ -159,10 +159,10 @@ describe("explicit BoldBI disk reset", () => {
 
   it("does not report success when destruction cannot be confirmed", async () => {
     const { env, fetch, destroyBoldBI } = setup();
-    env.POC_BOLDBI_RESET_TOKEN = resetToken;
+    env.BOLDBI_RESET_TOKEN = resetToken;
     destroyBoldBI.mockRejectedValueOnce(new Error("runtime error"));
-    const response = await fetch("/_poc/boldbi/reset", { method: "POST", headers: {
-      Authorization: "Bearer " + resetToken, "X-POC-Reset-Target": target,
+    const response = await fetch("/_internal/boldbi/reset", { method: "POST", headers: {
+      Authorization: "Bearer " + resetToken, "X-Reset-Target": target,
     } });
     expect(response.status).toBe(502);
     expect(env.POSTGRES_CONTAINER.getByName).not.toHaveBeenCalled();
@@ -179,8 +179,8 @@ describe("PostgreSQL startup readiness", () => {
       const first = new Response("PostgreSQL is not listening yet", { status: 503 });
       const second = new Response("PostgreSQL is not listening yet", { status: 503 });
       postgresFetch.mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockResolvedValueOnce(upgraded);
-      const pending = fetch("/_poc/postgres/tunnel", { headers: {
-        Authorization: "Bearer " + env.POC_TUNNEL_TOKEN, Upgrade: "websocket",
+      const pending = fetch("/_internal/postgres/tunnel", { headers: {
+        Authorization: "Bearer " + env.TUNNEL_TOKEN, Upgrade: "websocket",
       } });
       await vi.runAllTimersAsync();
       expect(await pending).toBe(upgraded);
@@ -191,7 +191,7 @@ describe("PostgreSQL startup readiness", () => {
       expect(env.POSTGRES_CONTAINER.getByName).toHaveBeenCalledOnce();
       for (const [request] of postgresFetch.mock.calls) {
         expect(request.headers.get("Upgrade")).toBe("websocket");
-        expect(request.headers.get("Authorization")).toBe("Bearer " + env.POC_TUNNEL_TOKEN);
+        expect(request.headers.get("Authorization")).toBe("Bearer " + env.TUNNEL_TOKEN);
       }
     } finally { vi.useRealTimers(); }
   });
@@ -200,7 +200,7 @@ describe("PostgreSQL startup readiness", () => {
     const { env, fetch, postgresFetch } = setup();
     const denied = new Response("Unauthorized", { status: 401 });
     postgresFetch.mockResolvedValueOnce(denied);
-    expect(await fetch("/_poc/postgres/tunnel", { headers: { Authorization: "Bearer " + env.POC_TUNNEL_TOKEN } })).toBe(denied);
+    expect(await fetch("/_internal/postgres/tunnel", { headers: { Authorization: "Bearer " + env.TUNNEL_TOKEN } })).toBe(denied);
     expect(postgresFetch).toHaveBeenCalledOnce();
   });
 
@@ -209,7 +209,7 @@ describe("PostgreSQL startup readiness", () => {
     try {
       const { env, fetch, postgresFetch } = setup();
       postgresFetch.mockImplementation(async () => new Response("Still starting", { status: 503 }));
-      const pending = fetch("/_poc/postgres/health", { headers: { Authorization: "Bearer " + env.POC_TUNNEL_TOKEN } });
+      const pending = fetch("/_internal/postgres/health", { headers: { Authorization: "Bearer " + env.TUNNEL_TOKEN } });
       await vi.runAllTimersAsync();
       const response = await pending;
       expect(response.status).toBe(503);

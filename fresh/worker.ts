@@ -3,9 +3,9 @@ import { Container } from "@cloudflare/containers";
 interface FreshEnv {
   BOLDBI_CONTAINER: DurableObjectNamespace<BoldBIContainer>;
   POSTGRES_CONTAINER: DurableObjectNamespace<PostgresContainer>;
-  POC_TUNNEL_TOKEN: string;
+  TUNNEL_TOKEN: string;
   POSTGRES_PASSWORD: string;
-  POC_BOLDBI_RESET_TOKEN?: string;
+  BOLDBI_RESET_TOKEN?: string;
 }
 
 async function fetchPostgresAfterStartup(
@@ -56,11 +56,11 @@ export class BoldBIContainer extends Container<FreshEnv> {
 
   override async fetch(request: Request): Promise<Response> {
     // The caller's valid Worker hostname supplies the public TLS tunnel URL.
-    const tunnel = new URL("/_poc/postgres/tunnel", request.url);
+    const tunnel = new URL("/_internal/postgres/tunnel", request.url);
     tunnel.protocol = "https:";
     await this.start({ envVars: {
-      POC_TUNNEL_URL: tunnel.href,
-      POC_TUNNEL_TOKEN: this.env.POC_TUNNEL_TOKEN,
+      TUNNEL_URL: tunnel.href,
+      TUNNEL_TOKEN: this.env.TUNNEL_TOKEN,
     } });
     return super.fetch(request);
   }
@@ -73,23 +73,23 @@ export class PostgresContainer extends Container<FreshEnv> {
   envVars = {
     POSTGRES_USER: "postgres", POSTGRES_DB: "postgres",
     POSTGRES_PASSWORD: this.env.POSTGRES_PASSWORD,
-    POC_TUNNEL_TOKEN: this.env.POC_TUNNEL_TOKEN,
+    TUNNEL_TOKEN: this.env.TUNNEL_TOKEN,
   };
 }
 
 export default {
   async fetch(request: Request, env: FreshEnv): Promise<Response> {
     const path = new URL(request.url).pathname;
-    if (path === "/_poc/health") return Response.json({ ok: true, service: "boldbi-postgres-poc" });
-    if (path === "/_poc/boldbi/reset") {
+    if (path === "/_internal/health") return Response.json({ ok: true, service: "boldbi-postgres" });
+    if (path === "/_internal/boldbi/reset") {
       // Destructive operation: separate credential, POST only, one fixed target.
       // The tunnel and diagnostic credentials cannot authorize this operation.
-      const token = env.POC_BOLDBI_RESET_TOKEN;
+      const token = env.BOLDBI_RESET_TOKEN;
       if (!token || token.length < 32 || request.headers.get("Authorization") !== `Bearer ${token}`) {
         return new Response("Unauthorized", { status: 401 });
       }
       if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { Allow: "POST" } });
-      if (request.headers.get("X-POC-Reset-Target") !== "boldbi-fresh") {
+      if (request.headers.get("X-Reset-Target") !== "boldbi-fresh") {
         return new Response("The fixed BoldBI reset target is required.", { status: 400 });
       }
       try {
@@ -101,12 +101,12 @@ export default {
         headers: { "Cache-Control": "no-store" },
       });
     }
-    if (!env.POC_TUNNEL_TOKEN || env.POC_TUNNEL_TOKEN.length < 32 || !env.POSTGRES_PASSWORD) {
-      return new Response("Configure POC_TUNNEL_TOKEN and POSTGRES_PASSWORD first.", { status: 503 });
+    if (!env.TUNNEL_TOKEN || env.TUNNEL_TOKEN.length < 32 || !env.POSTGRES_PASSWORD) {
+      return new Response("Configure TUNNEL_TOKEN and POSTGRES_PASSWORD first.", { status: 503 });
     }
-    if (path.startsWith("/_poc/")) {
-      if (request.headers.get("Authorization") !== `Bearer ${env.POC_TUNNEL_TOKEN}`) return new Response("Unauthorized", { status: 401 });
-      if (path !== "/_poc/postgres/tunnel" && path !== "/_poc/postgres/health") return new Response("Not found", { status: 404 });
+    if (path.startsWith("/_internal/")) {
+      if (request.headers.get("Authorization") !== `Bearer ${env.TUNNEL_TOKEN}`) return new Response("Unauthorized", { status: 401 });
+      if (path !== "/_internal/postgres/tunnel" && path !== "/_internal/postgres/health") return new Response("Not found", { status: 404 });
       if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { Allow: "GET" } });
       return fetchPostgresAfterStartup(env.POSTGRES_CONTAINER.getByName("postgres-fresh"), request);
     }
