@@ -7,9 +7,41 @@ Container behind one Worker (`boldbi-eval`). This folder is self-contained.
 
 The image already contains Bold BI and an initialized PostgreSQL 15, which share
 `localhost:5432`, so no database tunnel or second container is needed.
-`cloudflare-entrypoint.sh` prepares directories the microVM may lack and syncs
-the database password before starting the vendor entrypoint. The Worker passes
-these variables to the container:
+
+The vendor image ships with `/application/entrypoint.sh` designed for standard Linux
+Docker hosts. On Cloudflare Containers, a lightweight wrapper (`cloudflare-entrypoint.sh`)
+runs first to prepare the Cloudflare microVM environment before launching the vendor script:
+
+```text
+Container Starts
+   │
+   ▼
+cloudflare-entrypoint.sh  (Cloudflare microVM setup & password sync)
+   │
+   ▼
+/application/entrypoint.sh (Vendor script: starts 10 .NET services + Nginx)
+```
+
+### Why `cloudflare-entrypoint.sh` is required
+
+Cloudflare Containers run inside lightweight microVMs rather than standard Linux hosts.
+Without this wrapper, the container fails on boot due to 4 specific environment differences:
+
+1. **Shared memory fix (`dynamic_shared_memory_type mmap`)**: PostgreSQL defaults to POSIX
+   shared memory (`posix`), which Cloudflare microVMs restrict. Without switching to `mmap`,
+   PostgreSQL crashes immediately with `could not open shared memory segment: Permission denied`.
+2. **Missing microVM directories & permissions**: Cloudflare microVMs do not pre-create
+   `/var/run/postgresql` or `/var/log/postgresql` with non-root ownership. The wrapper creates them
+   and sets `postgres:postgres` permissions so PostgreSQL can create its lock and socket files.
+3. **Database password synchronization**: The bundled cluster has a default password. The wrapper
+   reads your Worker secret (`BOLD_SERVICES_DB_PASSWORD`) and runs `ALTER ROLE postgres WITH PASSWORD`
+   so your configured credentials work in the setup wizard.
+4. **Reverse proxy environment**: Sets `BOLD_SERVICES_REVERSE_PROXY=true` so internal Nginx recognizes
+   Cloudflare's `X-Forwarded-Proto` HTTPS header and avoids infinite redirect loops.
+
+Once these steps complete, `exec "$@"` hands execution over to Syncfusion's `/application/entrypoint.sh`.
+
+The Worker passes these variables to the container:
 
 | Variable | Value |
 | --- | --- |
